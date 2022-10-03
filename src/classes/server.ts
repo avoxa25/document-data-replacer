@@ -9,7 +9,7 @@ export class Server {
     const app = this.app;
     const port = this.port;
 
-    app.get('/', (req, res) => new PdfRoute(req, res));
+    app.post('/pdf', (req, res) => new PdfRoute(req, res).process());
 
     app.listen(port, () => console.log(`The server has been started with port ${port}`));
   }
