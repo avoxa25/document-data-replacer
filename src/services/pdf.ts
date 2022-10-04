@@ -1,76 +1,33 @@
-import muhammara from 'muhammara';
+import * as pdfJs from 'pdfjs-dist/legacy/build/pdf';
 import { Pattern } from '../interfaces';
 
 const PATH_TO_EXAMPLE = './src/templates/example.pdf';
-const EXAMPLE_BYTE_COUNT = 10000;
 
 export class PdfService {
-  private readonly sourceStream!: muhammara.ReadStream;
-  private readonly outputStream!: muhammara.PDFWStreamForBuffer;
-  private readonly modifiedPdfWriter!: muhammara.PDFWriter;
+  private buffer = Buffer.from('');
 
-  constructor() {
-    try {
-      this.sourceStream = new muhammara.PDFRStreamForFile(PATH_TO_EXAMPLE);
-      this.outputStream = new muhammara.PDFWStreamForBuffer();
-      this.modifiedPdfWriter = muhammara.createWriterToModify(this.sourceStream, this.outputStream, { compress: false });
-    } catch (error) {
-      console.log(error)
-    };
-  }
+  public async replaceVariablesWithValues(patterns: Pattern[]): Promise<void> {
+    const document = await pdfJs.getDocument(PATH_TO_EXAMPLE).promise;
 
-  public replaceVariablesWithValues(patterns: Pattern[]): void {
-    const pagesCount = this.getPagesCount();
-    const writer = this.modifiedPdfWriter;
-    const source = this.sourceStream;
+    const pagesCount = document.numPages;
 
-    for (let page = 0; page < pagesCount; page++) {
-      const copyingContext = writer.createPDFCopyingContextForModifiedFile();
-      const objectsContext = writer.getObjectsContext();
-      const pageObject = copyingContext.getSourceDocumentParser(source).parsePage(page);
-      const textStream = copyingContext
-        .getSourceDocumentParser(source)
-        .queryDictionaryObject(pageObject.getDictionary(), 'Contents');
-      const textObjectID = (pageObject.getDictionary().toJSObject() as { Contents: { getObjectID: () => number } }).Contents.getObjectID();
-      let data: number[] = [];
-      const readStream = copyingContext.getSourceDocumentParser(source).startReadingFromStream(textStream as muhammara.PDFStreamInput);
+    for (let pageNumber = 1; pageNumber <= pagesCount; pageNumber++) {
+      const page = await document.getPage(pageNumber);
+      const textContent = await page.getTextContent();
+      const contentItems = textContent.items;
 
-      while (readStream.notEnded()) {
-        const readData = readStream.read(EXAMPLE_BYTE_COUNT);
-        data = [...data, ...readData];
+      for (const item of contentItems) {
+          for (const pattern of patterns) {
+            (item as any).str =  ((item as any).str as string).replaceAll(`\$\{${pattern.variable}\}`, pattern.value);
+          }
       }
+    }   
 
-      const pdfPageAsString = Buffer.from(data).toString();
-      let modifiedPdfPageAsString = pdfPageAsString;
-
-      for (const pattern of patterns) {
-        modifiedPdfPageAsString = modifiedPdfPageAsString.replaceAll(`\$\{${pattern.variable}\}`, pattern.value);
-      }
-
-      objectsContext.startModifiedIndirectObject(textObjectID);
-
-      const dictionaryContext = objectsContext.startDictionary();
-      const stream = objectsContext.startUnfilteredPDFStream(dictionaryContext);
-
-      const byteArray = Array.from(new TextEncoder().encode(modifiedPdfPageAsString)) as unknown as number[];
-
-      stream.getWriteStream().write(byteArray);
-
-      objectsContext.endPDFStream(stream);
-      objectsContext.endIndirectObject();
-    }
-
-    writer.end();
+    const uint8Array = await document.saveDocument();
+    this.buffer = Buffer.of(...uint8Array);
   }
 
-  public getOutputStreamBuffer(): Promise<any> {
-    return this.outputStream.buffer;
-  }
-
-  private getPagesCount(): number {
-    return this.modifiedPdfWriter
-      .createPDFCopyingContextForModifiedFile()
-      .getSourceDocumentParser(this.sourceStream)
-      .getPagesCount();
+  public getBuffer(): ArrayBuffer {
+    return this.buffer;
   }
 }
