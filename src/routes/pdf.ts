@@ -17,28 +17,38 @@ const EXAMPLE_PATTERNS: Pattern[] = [
     value: 'Три',
   },
   {
-    variable: 'table1',
-    value: 'Таблица 1',
+    variable: 'loop',
+    value: [
+      {
+        title: 'Title1',
+        description: 'Description1',
+      },
+      {
+        title: 'Title2',
+        description: 'Description2',
+      },
+      {
+        title: 'Title3',
+        description: 'Description3',
+      },
+    ],
   },
   {
-    variable: 'table2',
-    value: 'Таблица 2',
-  },
-  {
-    variable: 'table3',
-    value: 'Таблица 3',
-  },
-  {
-    variable:'table4' ,
-    value: 'Таблица 4',
-  },
-  {
-    variable:'table5' ,
-    value: 'Таблица 5',
-  },
-  {
-    variable:'table6' ,
-    value: 'Таблица 6',
+    variable: 'loop2',
+    value: [
+      {
+        title: 'Title1',
+        description: 'Description1',
+      },
+      {
+        title: 'Title2',
+        description: 'Description2',
+      },
+      {
+        title: 'Title3',
+        description: 'Description3',
+      },
+    ],
   },
 ]
 
@@ -57,9 +67,9 @@ export class PdfRoute extends Route {
   public async process(): Promise<void> {
     const patterns: Pattern[] = this.request.body?.patterns ?? EXAMPLE_PATTERNS;
 
-    this.pdfService.replaceVariablesWithValues(patterns);
+    await this.pdfService.replaceVariablesWithValues(patterns);
 
-    const buffer = await this.pdfService.getOutputStreamBuffer();
+    const buffer = this.pdfService.getBuffer();
 
     this.response.contentType('application/pdf').send(buffer);
   }

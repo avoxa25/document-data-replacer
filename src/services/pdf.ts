@@ -1,76 +1,80 @@
-import muhammara from 'muhammara';
 import { Pattern } from '../interfaces';
+import Pizzip from 'pizzip';
+import * as fs from 'fs';
+import Docxtemplater, { DXT } from 'docxtemplater';
+import libre from 'libreoffice-convert';
+import util from 'util';
 
-const PATH_TO_EXAMPLE = './src/templates/example.pdf';
-const EXAMPLE_BYTE_COUNT = 10000;
+// https://docxtemplater.com/docs/api/
+// https://github.com/open-xml-templating/pizzip/blob/master/documentation/api_pizzip
+// https://github.com/elwerene/libreoffice-convert#readme
+
+const PATH_TO_EXAMPLE = './src/templates/example.docx';
 
 export class PdfService {
-  private readonly sourceStream!: muhammara.ReadStream;
-  private readonly outputStream!: muhammara.PDFWStreamForBuffer;
-  private readonly modifiedPdfWriter!: muhammara.PDFWriter;
+  private buffer: Buffer | undefined;
 
-  constructor() {
+  constructor() { }
+
+  public async replaceVariablesWithValues(patterns: Pattern[]): Promise<void> {
+    const templateBinary = this.getTemplateBinary();
+    const zippedBinary = this.executeZipping(templateBinary);
+    const document = this.getDocument(zippedBinary, {
+      paragraphLoop: true,
+      linebreaks: true,
+    });
+
+    this.replaceData(document, patterns);
+    this.convertToBuffer(document);
+    await this.convertToPdf();
+  }
+
+  public getBuffer(): any | undefined {
+    return this.buffer;
+  }
+
+  private convertToBuffer(doc: Docxtemplater): void {
+    this.buffer = (doc.getZip() as Pizzip).generate({
+      type: 'nodebuffer',
+    })
+  }
+
+  private async convertToPdf(): Promise<void> {
+    const buffer = this.buffer;
+
+    if (!buffer) return;
+
+    const convertAsync = util.promisify(libre.convert);
+
     try {
-      this.sourceStream = new muhammara.PDFRStreamForFile(PATH_TO_EXAMPLE);
-      this.outputStream = new muhammara.PDFWStreamForBuffer();
-      this.modifiedPdfWriter = muhammara.createWriterToModify(this.sourceStream, this.outputStream, { compress: false });
+      this.buffer = await convertAsync(buffer, '.pdf', undefined);
     } catch (error) {
-      console.log(error)
-    };
-  }
-
-  public replaceVariablesWithValues(patterns: Pattern[]): void {
-    const pagesCount = this.getPagesCount();
-    const writer = this.modifiedPdfWriter;
-    const source = this.sourceStream;
-
-    for (let page = 0; page < pagesCount; page++) {
-      const copyingContext = writer.createPDFCopyingContextForModifiedFile();
-      const objectsContext = writer.getObjectsContext();
-      const pageObject = copyingContext.getSourceDocumentParser(source).parsePage(page);
-      const textStream = copyingContext
-        .getSourceDocumentParser(source)
-        .queryDictionaryObject(pageObject.getDictionary(), 'Contents');
-      const textObjectID = (pageObject.getDictionary().toJSObject() as { Contents: { getObjectID: () => number } }).Contents.getObjectID();
-      let data: number[] = [];
-      const readStream = copyingContext.getSourceDocumentParser(source).startReadingFromStream(textStream as muhammara.PDFStreamInput);
-
-      while (readStream.notEnded()) {
-        const readData = readStream.read(EXAMPLE_BYTE_COUNT);
-        data = [...data, ...readData];
-      }
-
-      const pdfPageAsString = Buffer.from(data).toString();
-      let modifiedPdfPageAsString = pdfPageAsString;
-
-      for (const pattern of patterns) {
-        modifiedPdfPageAsString = modifiedPdfPageAsString.replaceAll(`\$\{${pattern.variable}\}`, pattern.value);
-      }
-
-      objectsContext.startModifiedIndirectObject(textObjectID);
-
-      const dictionaryContext = objectsContext.startDictionary();
-      const stream = objectsContext.startUnfilteredPDFStream(dictionaryContext);
-
-      const byteArray = Array.from(new TextEncoder().encode(modifiedPdfPageAsString)) as unknown as number[];
-
-      stream.getWriteStream().write(byteArray);
-
-      objectsContext.endPDFStream(stream);
-      objectsContext.endIndirectObject();
+      console.log(`Error occurred: ${error}`);
     }
-
-    writer.end();
   }
 
-  public getOutputStreamBuffer(): Promise<any> {
-    return this.outputStream.buffer;
+  private executeZipping(binary: string): Pizzip {
+    return new Pizzip(binary);
   }
 
-  private getPagesCount(): number {
-    return this.modifiedPdfWriter
-      .createPDFCopyingContextForModifiedFile()
-      .getSourceDocumentParser(this.sourceStream)
-      .getPagesCount();
+  private getDocument(zip: Pizzip, options?: DXT.ConstructorOptions): Docxtemplater {
+    return new Docxtemplater(zip, options);
+  }
+
+  private getRenderOptions(patterns: Pattern[]): Record<string, Pick<Pattern, 'value'>> {
+    return patterns.reduce((acc, pattern) => {
+      acc[pattern.variable] = pattern.value as Pick<Pattern, 'value'>;
+      return acc;
+    }, {} as Record<string, Pick<Pattern, 'value'>>);
+  }
+
+  private getTemplateBinary(): string {
+    return fs.readFileSync(PATH_TO_EXAMPLE, 'binary');
+  }
+
+  private replaceData(document: Docxtemplater, patterns: Pattern[]): Docxtemplater {
+    const options = this.getRenderOptions(patterns);
+
+    return document.render(options);
   }
 }
