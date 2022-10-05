@@ -57,9 +57,9 @@ export class PdfRoute extends Route {
   public async process(): Promise<void> {
     const patterns: Pattern[] = this.request.body?.patterns ?? EXAMPLE_PATTERNS;
 
-    this.pdfService.replaceVariablesWithValues(patterns);
+    await this.pdfService.replaceVariablesWithValues(patterns);
 
-    const buffer = await this.pdfService.getOutputStreamBuffer();
+    const buffer = await this.pdfService.getBuffer();
 
     this.response.contentType('application/pdf').send(buffer);
   }
