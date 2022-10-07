@@ -9,7 +9,7 @@ COPY . .
 RUN npm run build
 
 RUN apt update
-RUN apt install libreoffice -y
+RUN apt install libreoffice --no-install-recommends -y
 
 EXPOSE 8080
 
