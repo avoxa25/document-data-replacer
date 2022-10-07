@@ -61,11 +61,11 @@ export class PdfService {
     return new Docxtemplater(zip, options);
   }
 
-  private getRenderOptions(patterns: Pattern[]): Record<string, Pick<Pattern, 'value'>> {
+  private getRenderOptions(patterns: Pattern[]): Record<string, Pattern['value']> {
     return patterns.reduce((acc, pattern) => {
-      acc[pattern.variable] = pattern.value as Pick<Pattern, 'value'>;
+      acc[pattern.variable] = pattern.value;
       return acc;
-    }, {} as Record<string, Pick<Pattern, 'value'>>);
+    }, {} as Record<string, Pattern['value']>);
   }
 
   private getTemplateBinary(): string {
